@@ -1,5 +1,5 @@
-# HCI
-Repositorio para el proyecto de la materia de Interacción Humano - Computadora.
+# Búsqueda y Recuperación Web
+Repositorio para el proyecto de la asignatura Búsqueda y Recuperación de Información en la Web.
 
 ## Integrantes
 
