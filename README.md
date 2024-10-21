@@ -77,7 +77,7 @@ Para cualquier otro problema, por favor revisa los logs de error o contacta al m
 
 | Nombre                        | <!-- -->                                                           |
 | ----------------------------- | ------------------------------------------------------------------ |
-| Fernando Joachín Prieto       | <img src="./Team/foto-joachin.jpg" width="120" height="150" style='object-cover>       |
+| Fernando Joachín Prieto       | <img src="./Team/foto-joachin.jpg" width="120" height="150">        |
 | José Carlos Leo Fernández     | <img src="./Team/foto-leo.JPG" width="120" height="150">           |
 | Elías Madera de Regil         | <img src="./Team/foto-elias.jpg" width="120" height="150">         |
 | Vicente Nava Montoya          | <img src="./Team/foto-vicente.jpg" width="120" height="150">    |
