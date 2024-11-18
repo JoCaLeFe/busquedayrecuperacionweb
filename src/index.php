@@ -2,10 +2,51 @@
 use Parle\{Parser, ParserException, Lexer, Token};
 
 // Conexión a la base de datos
-$mysqli = new mysqli('localhost', 'root', '', 'movies');
+$mysqli = new mysqli('localhost', 'root', '', 'fulltext');
 
 if ($mysqli->connect_error) {
     die("Connection failed: " . $mysqli->connect_error);
+}
+
+// Manejo de carga de archivos
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['textfiles'])) {
+    $uploadDir = 'uploads/';
+    if (!file_exists($uploadDir)) {
+        mkdir($uploadDir, 0777, true);
+    }
+
+    foreach ($_FILES['textfiles']['tmp_name'] as $key => $tmp_name) {
+    $fileName = $_FILES['textfiles']['name'][$key];
+
+    // Obtener la extensión del archivo
+    $extension = pathinfo($fileName, PATHINFO_EXTENSION);
+
+    // Generar un nombre de archivo único agregando un timestamp
+    $uniqueFileName = pathinfo($fileName, PATHINFO_FILENAME) . "_" . time() . "." . $extension;
+    
+    // Construir la ruta del archivo
+    $filePath = $uploadDir . $uniqueFileName;
+
+    if (move_uploaded_file($tmp_name, $filePath)) {
+        processFile($filePath, $uniqueFileName); // Usar el nombre único en lugar del original
+    }
+}
+}
+
+
+
+function processFile($filePath, $fileName) {
+    $content = file_get_contents($filePath);
+    
+    preg_match_all('/\p{L}+/u', mb_strtolower($content, 'UTF-8'), $matches);
+    $wordCount = str_word_count($content);
+
+    // Insertar en la tabla documents 
+    $stmt = $GLOBALS['mysqli']->prepare("INSERT INTO documents (file_name, word_count, content) VALUES (?, ?, ?)");
+    $stmt->bind_param("sis", $fileName, $wordCount, $content);
+    $stmt->execute();
+    $docId = $GLOBALS['mysqli']->insert_id;
+
 }
 
 function parse_query($query)
@@ -105,41 +146,34 @@ function parse_query($query)
 function build_sql($ast)
 {
     // Construir la consulta base
-    global $mysqli;
     $conditions = build_conditions($ast);
-    $sql = "SELECT * 
-            FROM movie m
-            WHERE $conditions";
-    
+    $sql = "SELECT *
+            FROM documents d
+            WHERE $conditions ";
+    $sql .= "ORDER BY $conditions DESC";
     return $sql;
 }
-
 function build_conditions($node)
 {
     if (!is_array($node)) {
         return $node;
     }
-
     switch ($node['type']) {
         case 'AND':
-            return "MATCH(m.title, m.overview) AGAINST('+" . build_conditions($node['left']) . " +" . build_conditions($node['right']) . "' IN BOOLEAN MODE)";
+            return "(" . build_conditions($node['left']) . " AND " . build_conditions($node['right']) . ")";
         case 'OR':
-            return "MATCH(m.title, m.overview) AGAINST('" . build_conditions($node['left']) . " " . build_conditions($node['right']) . "' IN BOOLEAN MODE)";
+            return "(" . build_conditions($node['left']) . " OR " . build_conditions($node['right']) . ")";
         case 'NOT':
-            return "MATCH(m.title, m.overview) AGAINST('+" . build_conditions($node['left']) . " -" . build_conditions($node['right']) . "' IN BOOLEAN MODE)";
+            return "NOT (" . build_conditions($node['term']) . ")";
         case 'WORD':
-            return addslashes($node['value']);
-        // case 'PHRASE':
-        //     return '"' . addslashes($node['value']) . '"'; // Coincidencia exacta
+            return "MATCH(d.content) AGAINST('+" . addslashes($node['value']) . "' IN BOOLEAN MODE)";
         case 'PATRON':
-            return addslashes($node['value']) . '*'; // Coincidencia con comodín
+            // Añade un comodín para búsqueda parcial
+            return "MATCH(d.content) AGAINST('" . addslashes($node['value']) . "*' IN BOOLEAN MODE)";
         default:
             throw new Exception("Tipo de nodo desconocido: " . $node['type']);
     }
 }
-
-
-
 
 function ast_to_json($ast)
 {
@@ -170,7 +204,6 @@ $astJson = null;
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['query'])) {
     $query = $_POST['query'];
     global $globalQuery, $astJson;
-    global $mysqli;
     $globalQuery = $query;
     $error = null;
 
@@ -201,7 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['query'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles.css">
-    <title>Búsqueda de Película</title>
+    <title>Búsqueda FULLTEXT</title>
     <script>
         var astData = <?php echo $astJson ?? 'null'; ?>;
     </script>
@@ -212,7 +245,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['query'])) {
 <body>
     <div class='title-container'>
         <h1 class='title'>Búsqueda FULLTEXT</h1>
+        <h2 class='subtitle'>Carga de Archivos y Búsqueda</h2>
     </div>
+
+    <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" enctype="multipart/form-data">
+        <div class='input-container'>
+            <input id='file-input' type="file" name="textfiles[]" multiple accept=".txt">
+            <input type="submit" value="Cargar Archivos">
+        </div>
+    </form>
+
     <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>">
         <div class='input-container'>
             <input type="text" name="query" placeholder="Ingrese su consulta de búsqueda" required>
@@ -244,7 +286,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['query'])) {
         <div class="results-container">
             <?php while ($row = $results->fetch_assoc()): ?>
                 <div class="result-item">
-                    <h3><?php echo htmlspecialchars($row['title']); ?></h3>
+                    <a href="download.php?file=<?php echo urlencode($row['file_name']); ?>" class="download-link">
+                        Descargar <?php echo htmlspecialchars($row['file_name']); ?>
+                    </a>
                 </div>
             <?php endwhile; ?>
         </div>
