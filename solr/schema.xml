@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<schema name="web_crawler" version="1.6">
+    <field name="id" type="string" indexed="true" stored="true" required="true" multiValued="false"/>
+    <field name="url" type="string" indexed="true" stored="true"/>
+    <field name="title" type="text_es" indexed="true" stored="true"/>
+    <field name="content" type="text_es" indexed="true" stored="true"/>
+    <field name="author" type="text_es" indexed="true" stored="true"/>
+    <field name="timestamp" type="pdate" indexed="true" stored="true"/>
+    <field name="_version_" type="long" indexed="true" stored="true"/>
+    <field name="content_suggest" type="textSuggest" indexed="true" stored="true"/>
+    <field name="doc_type" type="string" indexed="true" stored="true"/>
+    
+    <uniqueKey>id</uniqueKey>
+    
+    <fieldType name="string" class="solr.StrField" sortMissingLast="true"/>
+    <fieldType name="pdate" class="solr.DatePointField"/>
+    <fieldType name="long" class="solr.LongPointField"/>
+    <fieldType class="solr.TextField" name="textSuggest" positionIncrementGap="100">
+        <analyzer>
+            <tokenizer class="solr.StandardTokenizerFactory"/>
+            <filter class="solr.LowerCaseFilterFactory"/>
+        </analyzer>
+    </fieldType>
+    
+    <fieldType name="text_es" class="solr.TextField" positionIncrementGap="100">
+        <analyzer type="index">
+            <tokenizer class="solr.StandardTokenizerFactory"/>
+            <filter class="solr.LowerCaseFilterFactory"/>
+            <filter class="solr.StopFilterFactory" ignoreCase="true" words="lang/stopwords_es.txt"/>
+            <filter class="solr.SpanishLightStemFilterFactory"/>
+            <filter class="solr.RemoveDuplicatesTokenFilterFactory"/>
+        </analyzer>
+        <analyzer type="query">
+            <tokenizer class="solr.StandardTokenizerFactory"/>
+            <filter class="solr.LowerCaseFilterFactory"/>
+            <filter class="solr.StopFilterFactory" ignoreCase="true" words="lang/stopwords_es.txt"/>
+            <filter class="solr.SpanishLightStemFilterFactory"/>
+            <filter class="solr.RemoveDuplicatesTokenFilterFactory"/>
+        </analyzer>
+    </fieldType>
+
+    <copyField source="content" dest="content_suggest"/>
+</schema>
