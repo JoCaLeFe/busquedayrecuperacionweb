@@ -232,7 +232,7 @@ app.get("/api/search", async (req, res) => {
       "hl.fragsize": 50,
       "hl.tag.pre": "<strong>",
       "hl.tag.post": "</strong>",
-      fl: "id,url,title,author,doc_type",
+      fl: "id,url,title,author,doc_type, score",
       facet: true,
       "facet.field": "author",
       "facet.field": "doc_type",

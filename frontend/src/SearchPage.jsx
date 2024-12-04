@@ -7,6 +7,7 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
+  CardScore
 } from "@/components/ui/card";
 import {
   Select,
@@ -327,6 +328,9 @@ export default function SearchPage() {
                           }}
                         />
                       </CardContent>
+                      <CardScore>
+                        <p className="text-sm"><strong>Relevancia: </strong>{doc.score}</p>
+                      </CardScore>
                     </Card>
                   ))}
                 </div>
