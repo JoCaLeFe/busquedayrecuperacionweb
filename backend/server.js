@@ -103,11 +103,7 @@ app.post("/api/crawl", async (req, res) => {
   try {
     const { url, depth } = req.body;
     const visitedUrls = new Set();
-    const MAX_DEPTH = 2;
-
-    let initialDepth;
-
-    if (!depth) initialDepth = 0;
+    const MAX_DEPTH = depth
 
     if (!url) {
       return res.status(400).json({ error: "URL is required" });
@@ -119,7 +115,6 @@ app.post("/api/crawl", async (req, res) => {
       return res.status(400).json({ error: "Depth is too high" });
     }
 
-    initialDepth = parseInt(depth);
 
     async function crawlPage(pageUrl, depth = 0) {
       if (
@@ -184,7 +179,7 @@ app.post("/api/crawl", async (req, res) => {
       }
     }
 
-    await crawlPage(url, initialDepth);
+    await crawlPage(url);
 
     res.json({
       success: true,
@@ -199,10 +194,12 @@ app.post("/api/crawl", async (req, res) => {
 
 app.get("/api/search", async (req, res) => {
   try {
-    const { expand } = req.query;
-    let { q } = req.query;
+    let { q, expand } = req.query;
 
     const originalQuery = q;
+
+    expand = expand === "true";
+
 
     if (expand) {
       const expandedQuery = await expandQuery(q);
