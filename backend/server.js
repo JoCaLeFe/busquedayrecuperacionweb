@@ -103,7 +103,7 @@ app.post("/api/crawl", async (req, res) => {
   try {
     const { url, depth } = req.body;
     const visitedUrls = new Set();
-    const MAX_DEPTH = depth
+    const MAX_DEPTH = depth;
 
     if (!url) {
       return res.status(400).json({ error: "URL is required" });
@@ -115,76 +115,94 @@ app.post("/api/crawl", async (req, res) => {
       return res.status(400).json({ error: "Depth is too high" });
     }
 
-
     async function crawlPage(pageUrl, depth = 0) {
+
+      console.log(`Crawling ${pageUrl} at depth ${depth}`);
+      
       if (
         depth >= MAX_DEPTH ||
         visitedUrls.has(pageUrl) ||
         !isValidUrl(pageUrl)
       ) {
+        console.log(`Skipping ${pageUrl} because it's invalid or visited at depth ${depth} or depth is too high`);
         return;
       }
 
       visitedUrls.add(pageUrl);
 
-      const response = await axios.get(pageUrl, {
-        headers: {
-          Accept: "text/html",
-        },
-        validateStatus: (status) => status === 200,
-      });
+      try {
+        console.log(`Fetching ${pageUrl}`);
+        
+        const response = await axios.get(pageUrl, {
+          headers: {
+            Accept: "text/html",
+          },
+          validateStatus: (status) => status === 200,
+        });
 
-      // Check if response is HTML
-      const contentType = response.headers["content-type"] || "";
-      if (!contentType.includes("text/html")) {
-        return;
-      }
+        // Check if response is HTML
+        const contentType = response.headers["content-type"] || "";
+        if (!contentType.includes("text/html")) {
+          console.log(`Skipping ${pageUrl} because it's not HTML`);
+          return;
+        }
 
-      const $ = cheerio.load(response.data);
+        const $ = cheerio.load(response.data);
 
-      // Verify page has body
-      if (!$("body").length) {
-        return;
-      }
+        // Verify page has body
+        if (!$("body").length) {
+          console.log(`Skipping ${pageUrl} because it has no body`);
+          return;
+        }
 
-      const title = $("title").text();
-      const author = $('meta[name="author"]').attr("content") || "";
-      $(
-        "script, style, button, img, input, form, select, textarea, iframe"
-      ).remove();
+        const title = $("title").text();
+        const author = $('meta[name="author"]').attr("content") || "";
+        $(
+          "script, style, button, img, input, form, select, textarea, iframe"
+        ).remove();
 
-      const content = convert($("body").text(), {
-        wordwrap: false,
-        preserveNewlines: false,
-      });
+        const content = convert($("body").text(), {
+          wordwrap: false,
+          preserveNewlines: false,
+        });
 
-      const doc = {
-        id: Date.now().toString() + Math.random().toString(36).slice(2),
-        url: pageUrl,
-        title,
-        content,
-        author,
-        timestamp: new Date().toISOString(),
-        doc_type: "webpage",
-      };
+        const doc = {
+          id: Date.now().toString() + Math.random().toString(36).slice(2),
+          url: pageUrl,
+          title,
+          content,
+          author,
+          timestamp: new Date().toISOString(),
+          doc_type: "webpage",
+        };
 
-      await axios.post(`${SOLR_URL}/update/json/docs`, doc, {
-        headers: { "Content-Type": "application/json" },
-        params: { commit: true },
-      });
+        console.log(`Indexing ${pageUrl}`);
 
-      const links = extractLinks($, pageUrl);
-      for (const link of links) {
-        await crawlPage(link, depth + 1);
+        await axios.post(`${SOLR_URL}/update/json/docs`, doc, {
+          headers: { "Content-Type": "application/json" },
+          params: { commit: true },
+        });
+
+        console.log(`Indexed ${pageUrl}`);
+        
+        console.log(`Extracting links from ${pageUrl}`);
+
+        const links = extractLinks($, pageUrl);
+        for (const link of links) {
+          await crawlPage(link, depth + 1);
+        }
+      } catch (error) {
+        console.log(`Failed to crawl ${pageUrl}: ${error.message}`);
       }
     }
 
     await crawlPage(url);
-
+    console.log(`Crawling completed with ${visitedUrls.size} documents indexed`);
+    
     res.json({
       success: true,
       crawledUrls: Array.from(visitedUrls),
-      depth: initialDepth,
+      depth,
     });
   } catch (error) {
     console.log(error);
@@ -232,7 +250,6 @@ app.get("/api/search", async (req, res) => {
   }
 });
 
-// Endpoint para sugerencias de autocompletado
 app.get("/api/suggest", async (req, res) => {
   try {
     const params = req.query;

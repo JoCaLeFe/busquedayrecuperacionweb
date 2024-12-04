@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -21,14 +19,14 @@ import { Badge } from "@/components/ui/badge";
 import axios from "axios";
 import { useToast } from "./hooks/use-toast";
 import { Skeleton } from "./components/ui/skeleton";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search, X } from "lucide-react";
 import { Switch } from "./components/ui/switch";
 import { Label } from "@radix-ui/react-label";
+import { useSearchParams, useNavigate } from "react-router-dom";
 
 export default function SearchPage() {
   const [url, setUrl] = useState("");
   const [depth, setDepth] = useState("1");
-  const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [searchResults, setSearchResults] = useState(null);
   const [facets, setFacets] = useState({});
@@ -37,6 +35,17 @@ export default function SearchPage() {
   const suggestionsRef = useRef(null);
   const [lastSelectedQuery, setLastSelectedQuery] = useState("");
   const [shouldExpandQuery, setShouldExpandQuery] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [corrections, setCorrections] = useState([]);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const query = searchParams.get("q") || "";
+
+  // Update query setting logic:
+  const handleQueryChange = (newQuery) => {
+    setSearchParams({ q: newQuery });
+  };
 
   const { toast } = useToast();
 
@@ -50,15 +59,18 @@ export default function SearchPage() {
 
   const crawlWebsite = async () => {
     setIsLoadingCrawl(true);
-    if (depth > 1) alert("Advertencia", "La profundidad 2 puede tardar mucho");
+    if (depth > 1) alert("Buscando...", "La profundidad 2 puede tardar mucho");
     try {
       const response = await axios.post("http://localhost:3001/api/crawl", {
         url,
         depth: parseInt(depth),
       });
+      const documentCount = response.data.crawledUrls.length;
       alert(
         "Crawling completado",
-        `Se indexaron ${response.data.crawledUrls.length} documentos`
+        `Se indexaron ${documentCount} ${
+          documentCount === 1 ? "documento" : "documentos"
+        }`
       );
     } catch (error) {
       console.error("Error crawling:", error);
@@ -70,6 +82,7 @@ export default function SearchPage() {
   };
 
   const searchWebsite = async (expandQuery) => {
+    setSuggestions([]);
     setIsLoadingSearch(true);
     console.log("expandQuery", expandQuery);
 
@@ -102,91 +115,96 @@ export default function SearchPage() {
   };
 
   useEffect(() => {
+    if (query) {
+      searchWebsite(shouldExpandQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (query === lastSelectedQuery) {
       return;
     }
-
     const timer = setTimeout(() => {
-      getSuggestions(query);
+    getSuggestions(query);
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [query, lastSelectedQuery]);
+  }, [query, lastSelectedQuery, searchResults]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Escape") {
       setSuggestions([]);
     } else if (e.key === "Tab" && suggestions.length > 0) {
       e.preventDefault();
-      setQuery(suggestions[0].term);
+      handleQueryChange(suggestions[0].term);
       setLastSelectedQuery(suggestions[0].term);
       setSuggestions([]);
+    }
+    if (e.key === "ArrowDown") {
+      suggestionsRef.current.firstChild.focus();
+    }
+    if (e.key === "ArrowUp") {
+      suggestionsRef.current.lastChild.focus();
+    }
+    if (e.key === "Enter") {
+      searchWebsite(shouldExpandQuery);
     }
   };
 
   const handleSuggestionClick = (suggestion) => {
-    setQuery(suggestion.term);
+    handleQueryChange(suggestion.term);
     setLastSelectedQuery(suggestion.term);
     setSuggestions([]);
   };
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-4xl font-bold mb-4">Buscador Solr</h1>
+    <div className="relative flex flex-col mx-auto h-[100svh]">
+      {/* Search Bar Section */}
+      <div className="bg-background sticky top-0 py-4 px-6 flex h-fit w-full gap-4 items-center justify-between border-b">
+        <div className="flex gap-2 items-center flex-grow max-w-fit">
 
-      <div className="mb-4 grid grid-cols-2 gap-2">
-        <Input
-          type="url"
-          placeholder="Ingresa una URL completa para crawlear (ej. https://example.com)"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <Select value={depth} onValueChange={setDepth}>
-          <SelectTrigger className="w-full mb-2">
-            <SelectValue placeholder="Selecciona la profundidad" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="1">1 (obtiene solo una página)</SelectItem>
-            <SelectItem value="2">
-              2 (obtiene la URL provista + todas las contenidas)
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <Button
-          disabled={isLoadingCrawl}
-          onClick={crawlWebsite}
-          className="col-span-2 max-w-xl"
-        >
-          {isLoadingCrawl && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {isLoadingCrawl ? "Crawleando..." : "Crawlear sitio"}
-        </Button>
-      </div>
+          <img src="moonrlogo.svg" className="size-8" />
+          <img src="moonr.svg" className="hidden md:flex max-w-36 h-4 md:h-auto" />
 
-      <div className="grid grid-cols-2 relative gap-2 mb-4">
-        <div className="relative ">
+        </div>
+        <div className="relative flex flex-grow max-w-4xl">
           <Input
             type="text"
             placeholder="Buscar..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => handleQueryChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="h-16 text-lg placeholder:text-lg"
           />
+          <Button
+            size="icon"
+            onClick={() => searchWebsite(shouldExpandQuery)}
+            disabled={isLoadingSearch}
+          >
+            {isLoadingSearch ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
+          </Button>
           {suggestions.length > 0 && (
             <ul
               ref={suggestionsRef}
-              className="absolute z-10 bg-white border border-gray-300 w-full"
+              className="absolute top-11 rounded-b-lg z-10 bg-white border border-gray-300 w-full"
             >
               {suggestions.map((suggestion, index) => (
                 <li
                   key={index}
-                  className="p-2 hover:bg-gray-100 cursor-pointer"
+                  className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
                   onClick={() => handleSuggestionClick(suggestion)}
                 >
                   {suggestion.term}
                 </li>
               ))}
-            </ul>
+              <Button variant='destructive' size='icon' className='absolute top-0 right-0' onClick={()=>setSuggestions([])}>
+                <X/>
+              </Button>
+              </ul>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -195,93 +213,140 @@ export default function SearchPage() {
             checked={shouldExpandQuery}
             onCheckedChange={setShouldExpandQuery}
           />
-          <Label htmlFor="expand-query" className="text-sm">
+          <Label htmlFor="expand-query" className="text-xs sm:text-sm">
             Expandir consulta
           </Label>
         </div>
-
-        <Button
-          onClick={() => searchWebsite(shouldExpandQuery)}
-          className="col-span-2 max-w-xl"
-          disabled={isLoadingSearch}
-        >
-          {isLoadingSearch && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {isLoadingSearch ? "Buscando..." : "Buscar"}
-        </Button>
       </div>
-
-      {facets && Object.keys(facets).length > 0 && (
-        <div className="mb-4">
-          {Object.entries(facets).map(([facetName, facetValues]) => (
-            <div key={facetName} className="mb-2">
-              <h3 className="text-lg font-medium">
-                {facetName === "doc_type" ? "Tipo" : "Autor"}
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {facetValues
-                  .filter((_, i) => i % 2 === 0)
-                  .map((value, index) => (
-                    <Badge key={index} variant="secondary">
-                      {value} ({facetValues[index * 2 + 1]})
-                    </Badge>
-                  ))}
+      {/* Main Section */}
+      <div className="min-h-0 flex h-full flex-col md:flex-row ">
+        {/* Left Sidebar - Facets */}
+        <div className="h-full p-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Más opciones</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Crawl Controls */}
+              <div className="mb-6 space-y-4">
+                <h3 className="text-sm">Crawlear nuevo sitio</h3>
+                <Input
+                  type="url"
+                  placeholder="https://ejemplo.com"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  className="mb-2"
+                />
+                <Select value={depth} onValueChange={setDepth}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Profundidad" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Profundidad 1</SelectItem>
+                    <SelectItem value="2">Profundidad 2</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  disabled={isLoadingCrawl}
+                  onClick={crawlWebsite}
+                  className="w-full"
+                  variant="outline"
+                >
+                  {isLoadingCrawl && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {isLoadingCrawl ? "Crawleando..." : "Crawlear sitio"}
+                </Button>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
 
-      {isLoadingSearch ? (
-        <div>
-          {[1, 2, 3].map((i) => (
-            <SearchResultSkeleton key={i} />
-          ))}
+              {/* Facets */}
+              {facets && Object.keys(facets).length > 0 && (
+                <div className="space-y-4">
+                  {Object.entries(facets).map(([facetName, facetValues]) => (
+                    <div key={facetName}>
+                      <h3 className="font-medium mb-2">
+                        {facetName === "doc_type" ? "Tipo" : "Autor"}
+                      </h3>
+                      <div className="flex flex-col gap-2">
+                        {facetValues
+                          .filter((_, i) => i % 2 === 0)
+                          .map((value, index) => (
+                            <div
+                              key={index}
+                              className="flex justify-between w-fit items-center gap-2"
+                            >
+                              <span className="text-xs">{value}</span>
+                              <Badge key={index}>
+                                {facetValues[index * 2 + 1]}
+                              </Badge>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
-      ) : (
-        searchResults &&
-        searchResults.response && (
-          <div>
-            {searchResults.response.docs.map((doc) => (
-              <Card key={doc.id} className="mb-4">
-                <CardHeader>
-                  <CardTitle className="hover:underline">
-                    <a href={doc.url} target="_blank" rel="noreferrer">
-                      {doc.title}
-                    </a>
-                  </CardTitle>
-                  <CardDescription className="hover:underline">
-                    <a href={doc.url} target="_blank" rel="noreferrer">
-                      {decodeURIComponent(doc.url)}
-                    </a>
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p
-                    className="line-clamp-3 overflow-hidden text-ellipsis"
-                    dangerouslySetInnerHTML={{
-                      __html:
-                        searchResults.highlighting[doc.id]?.content?.[0] ||
-                        "No hay snippet disponible",
-                    }}
-                  ></p>
-                </CardContent>
-              </Card>
-            ))}
+
+        {/* Search Results */}
+        <div className="flex-grow h-full p-4">
+          <div className="max-h-full overflow-auto">
+            {isLoadingSearch ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <SearchResultSkeleton key={i} />
+                ))}
+              </div>
+            ) : (
+              searchResults &&
+              searchResults.response && (
+                <div className="space-y-4">
+                  {searchResults.response.docs.map((doc) => (
+                    <Card key={doc.id} className="max-w-[80ch]">
+                      <CardHeader>
+                        <CardTitle className="hover:underline text-lg">
+                          <a href={doc.url} target="_blank" rel="noreferrer">
+                            {doc.title}
+                          </a>
+                        </CardTitle>
+                        <CardDescription className="hover:underline">
+                          <a href={doc.url} target="_blank" rel="noreferrer">
+                            {decodeURIComponent(doc.url)}
+                          </a>
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <p
+                          className="text-sm"
+                          dangerouslySetInnerHTML={{
+                            __html:
+                              searchResults.highlighting[doc.id]
+                                ?.content?.[0] || "No hay snippet disponible",
+                          }}
+                        />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )
+            )}
           </div>
-        )
-      )}
+        </div>
+      </div>
     </div>
   );
 }
 
 const SearchResultSkeleton = () => (
-  <Card className="mb-4">
+  <Card>
     <CardHeader>
-      <Skeleton className="h-6 w-2/3 mb-2" />
-      <Skeleton className="h-4 w-1/2" />
+      <Skeleton className="h-6 w-2/3 mb-2 bg-slate-200" />
+      <Skeleton className="h-4 w-1/2 bg-slate-200" />
     </CardHeader>
     <CardContent>
-      <Skeleton className="h-16 w-full" />
+      <Skeleton className="h-16 w-full bg-slate-200" />
     </CardContent>
   </Card>
 );
