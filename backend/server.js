@@ -14,6 +14,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const SOLR_URL = process.env.SOLR_URL || "http://localhost:8983/solr/briw";
+
 function getDomain(urlString) {
   return new URL(urlString).hostname;
 }
@@ -171,14 +173,10 @@ app.post("/api/crawl", async (req, res) => {
         doc_type: "webpage",
       };
 
-      await axios.post(
-        "http://localhost:8983/solr/briw/update/json/docs",
-        doc,
-        {
-          headers: { "Content-Type": "application/json" },
-          params: { commit: true },
-        }
-      );
+      await axios.post(`${SOLR_URL}/update/json/docs`, doc, {
+        headers: { "Content-Type": "application/json" },
+        params: { commit: true },
+      });
 
       const links = extractLinks($, pageUrl);
       for (const link of links) {
@@ -205,7 +203,6 @@ app.get("/api/search", async (req, res) => {
     let { q } = req.query;
 
     const originalQuery = q;
-    
 
     if (expand) {
       const expandedQuery = await expandQuery(q);
@@ -226,14 +223,14 @@ app.get("/api/search", async (req, res) => {
       "facet.field": "doc_type",
     };
 
-    const response = await axios.get("http://localhost:8983/solr/briw/spell", {
+    const response = await axios.get(`${SOLR_URL}/spell`, {
       params,
     });
 
     res.json({ originalQuery, finalQuery: q, ...response.data });
   } catch (error) {
     console.log(error);
-  
+
     res.status(500).json({ error: error.message });
   }
 });
@@ -244,14 +241,14 @@ app.get("/api/suggest", async (req, res) => {
     const params = req.query;
     const q = params.q;
 
-    const response = await axios.get("http://localhost:8983/solr/briw/suggest", {
+    const response = await axios.get(`${SOLR_URL}/suggest`, {
       params,
     });
 
     res.json(response.data.suggest.mySuggester[q]);
   } catch (error) {
     console.log(error);
-    
+
     res.status(500).json({ error: error.message });
   }
 });
