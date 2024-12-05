@@ -1,14 +1,14 @@
-import { useState, useEffect, useRef } from "react";
-import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
   CardContent,
-  CardInfo
+  CardDescription,
+  CardHeader,
+  CardInfo,
+  CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -16,14 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import axios from "axios";
-import { useToast } from "./hooks/use-toast";
-import { Skeleton } from "./components/ui/skeleton";
-import { Loader2, Search, X } from "lucide-react";
-import { Switch } from "./components/ui/switch";
 import { Label } from "@radix-ui/react-label";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import axios from "axios";
+import { Loader2, Search, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Skeleton } from "./components/ui/skeleton";
+import { Switch } from "./components/ui/switch";
+import { useToast } from "./hooks/use-toast";
 
 export default function SearchPage() {
   const [url, setUrl] = useState("");
@@ -37,16 +37,17 @@ export default function SearchPage() {
   const [lastSelectedQuery, setLastSelectedQuery] = useState("");
   const [shouldExpandQuery, setShouldExpandQuery] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [corrections, setCorrections] = useState([]);
   const [selectedFacets, setSelectedFacets] = useState([]);
-
   const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [isLoadingUpload, setIsLoadingUpload] = useState(false);
 
-  const query = searchParams.get("q") || "";
+  let query = searchParams.get("q") || "";
 
   // Update query setting logic:
   const handleQueryChange = (newQuery) => {
     setSearchParams({ q: newQuery });
+    setShowSuggestions(true);
   };
 
   const { toast } = useToast();
@@ -84,19 +85,24 @@ export default function SearchPage() {
   };
 
   const handleFacetClick = (facetName, facetValue) => {
-    setSelectedFacets([facetName, facetValue]);
+    setSelectedFacets([facetName, `"${facetValue}"`]);
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const searchWebsite = async (expandQuery) => {
     setSuggestions([]);
+    setShowSuggestions(false);
     setIsLoadingSearch(true);
-    console.log("expandQuery", expandQuery);
     try {
       const response = await axios.get(
-        `http://localhost:3001/api/search?q=${query}&facet=${selectedFacets[0] ?? ""}:${selectedFacets[1] ?? ""}&expand=${expandQuery}`
+        `http://localhost:3001/api/search?q=${query}&facet=${
+          selectedFacets[0] ?? ""
+        }:${selectedFacets[1] ?? ""}&expand=${expandQuery}`
       );
       setSearchResults(response.data);
+
       setFacets(response.data.facet_counts.facet_fields);
+
       if (expandQuery)
         alert("Tu query fue expandida a", response.data.finalQuery);
     } catch (error) {
@@ -108,7 +114,9 @@ export default function SearchPage() {
   };
 
   const getSuggestions = async (value) => {
+
     if (value.length < 2) return setSuggestions([]);
+    if (!showSuggestions) return;
     try {
       const response = await axios.get(
         `http://localhost:3001/api/suggest?q=${value}`
@@ -131,17 +139,20 @@ export default function SearchPage() {
       searchWebsite(shouldExpandQuery);
       setSelectedFacets([]);
     }
-  }, [selectedFacets]);
+  }, [selectedFacets, searchWebsite, shouldExpandQuery]);
 
   useEffect(() => {
-    if (query === lastSelectedQuery) {
+    if (!query || query === lastSelectedQuery) {
       return;
     }
+    if (!showSuggestions) return;
+
     const timer = setTimeout(() => {
-    getSuggestions(query);
+      getSuggestions(query);
     }, 300);
 
     return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, lastSelectedQuery, searchResults]);
 
   const handleKeyDown = (e) => {
@@ -153,12 +164,6 @@ export default function SearchPage() {
       setLastSelectedQuery(suggestions[0].term);
       setSuggestions([]);
     }
-    if (e.key === "ArrowDown") {
-      suggestionsRef.current.firstChild.focus();
-    }
-    if (e.key === "ArrowUp") {
-      suggestionsRef.current.lastChild.focus();
-    }
     if (e.key === "Enter") {
       searchWebsite(shouldExpandQuery);
     }
@@ -167,7 +172,83 @@ export default function SearchPage() {
   const handleSuggestionClick = (suggestion) => {
     handleQueryChange(suggestion.term);
     setLastSelectedQuery(suggestion.term);
+    setShowSuggestions(false);
     setSuggestions([]);
+    query = suggestion.term;
+    
+    searchWebsite(shouldExpandQuery);
+    console.log("Suggestion clicked:", suggestion.term);
+
+  };
+
+  const handleCorrectionClick = (correction) => {
+    handleQueryChange(correction);
+    query = correction;
+    searchWebsite(shouldExpandQuery);
+  };
+
+  const handleFileUpload = async (e) => {
+    e.preventDefault();
+
+    if (!selectedFile) return;
+
+    try {
+      setIsLoadingUpload(true);
+      const formData = new FormData();
+      formData.append("pdf", selectedFile);
+
+      const response = await fetch("http://localhost:3001/api/upload/pdf", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error("Upload failed");
+
+      const data = await response.json();
+      console.log(data);
+      
+      alert("PDF subido", `Se subió el PDF correctamente. ${data.document?.title || "Archivo"} subido con éxito`);
+    } catch (error) {
+      console.error("Upload error:", error);
+    } finally {
+      setIsLoadingUpload(false);
+      setSelectedFile(null);
+    }
+  };
+
+  const Corrections = () => {
+    if (
+      searchResults?.spellcheck?.correctlySpelled === false &&
+      searchResults.spellcheck.suggestions.length > 0
+    )
+      return (
+        <div>
+          <p>
+            ¿Quizás quisiste decir{" "}
+            {searchResults.spellcheck.suggestions[1].suggestion.map(
+              (suggestion, index) => (
+                <span
+                  key={index}
+                  className="cursor-pointer text-blue-500 hover:underline"
+                  onClick={() => handleCorrectionClick(suggestion.word)}
+                >
+                  {suggestion.word},{" "}
+                </span>
+              )
+            )}
+            ?
+          </p>
+        </div>
+      );
+    else if (searchResults?.response.numFound === 0) {
+      return (
+        <div>
+          <p>
+            No se encontraron resultados ni hay correciones disponibles para tu búsqueda
+          </p>
+        </div>
+      );
+    }
   };
 
   return (
@@ -175,10 +256,11 @@ export default function SearchPage() {
       {/* Search Bar Section */}
       <div className="bg-background sticky top-0 py-4 px-6 flex h-fit w-full gap-4 items-center justify-between border-b">
         <div className="flex gap-2 items-center flex-grow max-w-fit">
-
           <img src="moonrlogo.svg" className="size-8" />
-          <img src="moonr.svg" className="hidden md:flex max-w-36 h-4 md:h-auto" />
-
+          <img
+            src="moonr.svg"
+            className="hidden md:flex max-w-36 h-4 md:h-auto"
+          />
         </div>
         <div className="relative flex flex-grow max-w-4xl">
           <Input
@@ -202,21 +284,26 @@ export default function SearchPage() {
           {suggestions.length > 0 && (
             <ul
               ref={suggestionsRef}
-              className="absolute top-11 rounded-b-lg z-10 bg-white border border-gray-300 w-full"
+              className="absolute top-11 rounded-b-lg  bg-white border border-gray-300 w-full"
             >
               {suggestions.map((suggestion, index) => (
                 <li
                   key={index}
-                  className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
+                  className="p-2 hover:bg-gray-100 cursor-pointer text-sm focus:bg-gray-200"
                   onClick={() => handleSuggestionClick(suggestion)}
                 >
                   {suggestion.term}
                 </li>
               ))}
-              <Button variant='destructive' size='icon' className='absolute top-0 right-0' onClick={()=>setSuggestions([])}>
-                <X/>
+              <Button
+                variant="destructive"
+                size="icon"
+                className="absolute top-0 right-0"
+                onClick={() => setSuggestions([])}
+              >
+                <X />
               </Button>
-              </ul>
+            </ul>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -232,8 +319,8 @@ export default function SearchPage() {
       </div>
       {/* Main Section */}
       <div className="min-h-0 flex h-full flex-col md:flex-row ">
-        {/* Left Sidebar - Facets */}
-        <div className="h-full p-4">
+        {/* Left Sidebar  */}
+        <div className="h-full p-4 overflow-auto">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Más opciones</CardTitle>
@@ -246,7 +333,9 @@ export default function SearchPage() {
                   type="url"
                   placeholder="https://ejemplo.com"
                   value={url}
-                  onChange={(e) => setUrl(e.target.value)}
+                  onChange={(e) => {
+                    setUrl(e.target.value);
+                  }}
                   className="mb-2"
                 />
                 <Select value={depth} onValueChange={setDepth}>
@@ -271,9 +360,34 @@ export default function SearchPage() {
                 </Button>
               </div>
 
+              {/* Upload PDF */}
+              <div className="mb-6 space-y-2">
+                <p className="text-sm">Subir PDF</p>
+                <Input
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => setSelectedFile(e.target.files[0])}
+                />
+
+                <Button
+                  disabled={isLoadingUpload || !selectedFile}
+                  onClick={handleFileUpload}
+                  className="w-full"
+                  variant="outline"
+                >
+                  {isLoadingUpload && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Subir PDF
+                </Button>
+              </div>
+
               {/* Facets */}
               {facets && Object.keys(facets).length > 0 && (
                 <div className="space-y-4">
+                  <Button variant='outline' onClick={() => { setSelectedFacets([]); searchWebsite(shouldExpandQuery) }} >
+                    Quitar filtros
+                  </Button>
                   {Object.entries(facets).map(([facetName, facetValues]) => (
                     <div key={facetName}>
                       <h3 className="font-medium mb-2">
@@ -285,11 +399,13 @@ export default function SearchPage() {
                           .map((value, index) => (
                             <div
                               key={index}
-                              className="flex justify-between w-fit items-center gap-2"
+                              className={
+                                "flex justify-between w-full items-center gap-2 cursor-pointer"
+                              }
                               onClick={() => handleFacetClick(facetName, value)}
                             >
-                              <span className="text-xs">{value}</span>
-                              <Badge key={index}>
+                              <span className="text-xs">{value === '' ? "Sin autor" : value}</span>
+                              <Badge key={index} variant='outline'>
                                 {facetValues[index * 2 + 1]}
                               </Badge>
                             </div>
@@ -313,11 +429,12 @@ export default function SearchPage() {
                 ))}
               </div>
             ) : (
-              searchResults &&
-              searchResults.response && (
+              searchResults?.response && (
                 <div className="space-y-4">
+                  <Corrections />
+
                   {searchResults.response.docs.map((doc) => (
-                    <Card key={doc.id} className="max-w-[80ch]">
+                    <Card key={doc.id} className="max-w-[90ch]">
                       <CardHeader>
                         <CardTitle className="hover:underline text-lg">
                           <a href={doc.url} target="_blank" rel="noreferrer">
@@ -341,9 +458,18 @@ export default function SearchPage() {
                         />
                       </CardContent>
                       <CardInfo>
-                        <p className="text-sm"><strong>Relevancia: </strong>{doc.score}</p>
-                        <p className="text-sm"><strong>Autor: </strong>{doc.author ? doc.author : 'N/A'}</p>
-                        <p className="text-sm"><strong>Tipo: </strong>{doc.doc_type}</p>
+                        <p className="text-sm">
+                          <strong>Relevancia: </strong>
+                          {doc.score.toFixed(3)}
+                        </p>
+                        <p className="text-sm">
+                          <strong>Autor: </strong>
+                          {doc.author ? doc.author : "N/A"}
+                        </p>
+                        <p className="text-sm">
+                          <strong>Tipo: </strong>
+                          {doc.doc_type}
+                        </p>
                       </CardInfo>
                     </Card>
                   ))}
@@ -358,7 +484,7 @@ export default function SearchPage() {
 }
 
 const SearchResultSkeleton = () => (
-  <Card>
+  <Card className="max-w-[90ch]">
     <CardHeader>
       <Skeleton className="h-6 w-2/3 mb-2 bg-slate-200" />
       <Skeleton className="h-4 w-1/2 bg-slate-200" />

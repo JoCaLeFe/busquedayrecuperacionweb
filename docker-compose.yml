@@ -14,3 +14,5 @@ services:
       - "3001:3001"
     environment:
       - SOLR_URL=http://host.docker.internal:8983/solr/briw
+    volumes:
+      - ./backend/uploads:/app/uploads

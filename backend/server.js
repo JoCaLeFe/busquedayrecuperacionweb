@@ -5,10 +5,40 @@ const cheerio = require("cheerio");
 const cors = require("cors");
 const { convert } = require("html-to-text");
 const { CohereClientV2 } = require("cohere-ai");
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const pdfParse = require('pdf-parse');
 
 const cohere = new CohereClientV2({
   token: "4CDMDIZHFjWYY70VUhbXtptiJgYdf3WGwujNA2SS",
 });
+
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+const storage = multer.diskStorage({
+  destination: uploadDir,
+  filename: (req, file, cb) => {
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}-${file.originalname}`;
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'));
+    }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+})
 
 const app = express();
 app.use(cors());
@@ -103,7 +133,7 @@ app.post("/api/crawl", async (req, res) => {
   try {
     const { url, depth } = req.body;
     const visitedUrls = new Set();
-    const MAX_DEPTH = depth;
+    const MAX_DEPTH = depth || 2;
 
     if (!url) {
       return res.status(400).json({ error: "URL is required" });
@@ -115,16 +145,17 @@ app.post("/api/crawl", async (req, res) => {
       return res.status(400).json({ error: "Depth is too high" });
     }
 
-    async function crawlPage(pageUrl, depth = 0) {
-
+    async function crawlPage(pageUrl, depth = 1) {
       console.log(`Crawling ${pageUrl} at depth ${depth}`);
-      
+
       if (
-        depth >= MAX_DEPTH ||
+        depth > MAX_DEPTH ||
         visitedUrls.has(pageUrl) ||
         !isValidUrl(pageUrl)
       ) {
-        console.log(`Skipping ${pageUrl} because it's invalid or visited at depth ${depth} or depth is too high`);
+        console.log(
+          `Skipping ${pageUrl} because it's invalid or visited at depth ${depth} or depth is too high`
+        );
         return;
       }
 
@@ -132,7 +163,7 @@ app.post("/api/crawl", async (req, res) => {
 
       try {
         console.log(`Fetching ${pageUrl}`);
-        
+
         const response = await axios.get(pageUrl, {
           headers: {
             Accept: "text/html",
@@ -170,7 +201,7 @@ app.post("/api/crawl", async (req, res) => {
           id: Date.now().toString() + Math.random().toString(36).slice(2),
           url: pageUrl,
           title,
-          content,
+          content_suggest: content,
           author,
           timestamp: new Date().toISOString(),
           doc_type: "webpage",
@@ -184,7 +215,14 @@ app.post("/api/crawl", async (req, res) => {
         });
 
         console.log(`Indexed ${pageUrl}`);
-        
+
+        if (MAX_DEPTH === 1) {
+          console.log(
+            `User requested depth of 1, skipping links extraction for ${pageUrl}`
+          );
+          return;
+        }
+
         console.log(`Extracting links from ${pageUrl}`);
 
         const links = extractLinks($, pageUrl);
@@ -197,8 +235,10 @@ app.post("/api/crawl", async (req, res) => {
     }
 
     await crawlPage(url);
-    console.log(`Crawling completed with ${visitedUrls.size} documents indexed`);
-    
+    console.log(
+      `Crawling completed with ${visitedUrls.size} documents indexed`
+    );
+
     res.json({
       success: true,
       crawledUrls: Array.from(visitedUrls),
@@ -214,10 +254,11 @@ app.get("/api/search", async (req, res) => {
   try {
     let { q, expand, facet } = req.query;
 
+
+
     const originalQuery = q;
 
     expand = expand === "true";
-
 
     if (expand) {
       const expandedQuery = await expandQuery(q);
@@ -229,36 +270,35 @@ app.get("/api/search", async (req, res) => {
       defType: "edismax",
       qf: "title^2 content^1",
       hl: true,
-      "hl.fragsize": 50,
+      "hl.fragsize": 40,
       "hl.tag.pre": "<strong>",
       "hl.tag.post": "</strong>",
-      fl: "id,url,title,author,doc_type, score",
+      fl: "id,url,title,author,doc_type,score",
       facet: true,
-      "facet.field": ["author", "doc_type"],
     };
 
-    if(facet !== ":"){
+    if (facet !== ":") {
       params.fq = facet;
     }
 
-    const urlWithParams = new URL(`${SOLR_URL}/spell`);
-    Object.keys(params).forEach(key => {
-      if (Array.isArray(params[key])) {
-        params[key].forEach(value => {
-          urlWithParams.searchParams.append(key, value);
-          urlWithParams.searchParams.append(key, value); 
-        });
-      } else {
-        urlWithParams.searchParams.append(key, params[key]);
-      }
-    });
+    var newParams = new URLSearchParams(params);
 
-    const response = await axios.get(urlWithParams.toString());
+    newParams.append("facet.field", "doc_type");
+    newParams.append("facet.field", "author_facet");
+
+
+    const request = {
+      params: newParams,
+    }
+
+    
+
+    const response = await axios.get(`${SOLR_URL}/spell`, request);
+
+
 
     res.json({ originalQuery, finalQuery: q, ...response.data });
   } catch (error) {
-    console.log(error);
-
     res.status(500).json({ error: error.message });
   }
 });
@@ -275,12 +315,55 @@ app.get("/api/suggest", async (req, res) => {
     res.json(response.data.suggest.mySuggester[q]);
   } catch (error) {
     //console.log(error);
-
     //res.status(500).json({ error: error.message });
   }
 });
 
+app.post('/api/upload/pdf', upload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No PDF file uploaded' });
+    }
+
+    const filePath = req.file.path;
+    const fileData = await fs.promises.readFile(filePath);
+    
+    // Parse PDF content
+    const pdfData = await pdfParse(fileData);
+    
+    // Create document for Solr
+    const doc = {
+      id: Date.now().toString() + Math.random().toString(36).slice(2),
+      url: `${req.protocol}://${req.get('host')}/${req.file.filename}`,
+      title: req.file.originalname.replace('.pdf', ''),
+      content_suggest: pdfData.text,
+      author: pdfData.info?.Author || '',
+      timestamp: new Date().toISOString(),
+      doc_type: 'pdf'
+    };
+
+    // Index to Solr
+    await axios.post(`${SOLR_URL}/update/json/docs`, doc, {
+      headers: { 'Content-Type': 'application/json' },
+      params: { commit: true }
+    });
+
+    res.json({
+      success: true,
+      message: 'PDF uploaded and indexed successfully',
+      document: doc
+    });
+
+  } catch (error) {
+    console.error('PDF upload error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = 3001;
+
+app.use(express.static(path.join(__dirname, 'uploads')));
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

@@ -702,8 +702,8 @@
 
     <lst name="spellchecker">
       <str name="name">mySpellChecker</str>
-      <str name="df">content</str>
-      <str name="field">content</str>
+      <str name="df">content_suggest</str>
+      <str name="field">content_suggest</str>
       <str name="queryAnalyzerFieldType">text_es</str>
       <str name="classname">solr.DirectSolrSpellChecker</str>
       <!-- the spellcheck distance measure used, the default is the internal levenshtein -->

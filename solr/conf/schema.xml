@@ -5,6 +5,7 @@
     <field name="title" type="text_es" indexed="true" stored="true"/>
     <field name="content" type="text_es" indexed="true" stored="true"/>
     <field name="author" type="text_es" indexed="true" stored="true"/>
+    <field name="author_facet" type="authorFacet" indexed="true" stored="true"/>
     <field name="timestamp" type="pdate" indexed="true" stored="true"/>
     <field name="_version_" type="long" indexed="true" stored="true"/>
     <field name="content_suggest" type="textSuggest" indexed="true" stored="true"/>
@@ -19,6 +20,12 @@
         <analyzer>
             <tokenizer class="solr.StandardTokenizerFactory"/>
             <filter class="solr.LowerCaseFilterFactory"/>
+        </analyzer>
+    </fieldType>
+
+    <fieldType class="solr.TextField" name="authorFacet" positionIncrementGap="100">
+        <analyzer>
+            <tokenizer class="solr.KeywordTokenizerFactory"/>
         </analyzer>
     </fieldType>
     
@@ -39,5 +46,6 @@
         </analyzer>
     </fieldType>
 
-    <copyField source="content" dest="content_suggest"/>
+    <copyField source="content_suggest" dest="content"/>
+    <copyField source="author" dest="author_facet"/>
 </schema>
