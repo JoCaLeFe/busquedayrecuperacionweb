@@ -212,7 +212,7 @@ app.post("/api/crawl", async (req, res) => {
 
 app.get("/api/search", async (req, res) => {
   try {
-    let { q, expand } = req.query;
+    let { q, expand, facet } = req.query;
 
     const originalQuery = q;
 
@@ -234,13 +234,26 @@ app.get("/api/search", async (req, res) => {
       "hl.tag.post": "</strong>",
       fl: "id,url,title,author,doc_type, score",
       facet: true,
-      "facet.field": "author",
-      "facet.field": "doc_type",
+      "facet.field": ["author", "doc_type"],
     };
 
-    const response = await axios.get(`${SOLR_URL}/spell`, {
-      params,
+    if(facet !== ":"){
+      params.fq = facet;
+    }
+
+    const urlWithParams = new URL(`${SOLR_URL}/spell`);
+    Object.keys(params).forEach(key => {
+      if (Array.isArray(params[key])) {
+        params[key].forEach(value => {
+          urlWithParams.searchParams.append(key, value);
+          urlWithParams.searchParams.append(key, value); 
+        });
+      } else {
+        urlWithParams.searchParams.append(key, params[key]);
+      }
     });
+
+    const response = await axios.get(urlWithParams.toString());
 
     res.json({ originalQuery, finalQuery: q, ...response.data });
   } catch (error) {
@@ -261,9 +274,9 @@ app.get("/api/suggest", async (req, res) => {
 
     res.json(response.data.suggest.mySuggester[q]);
   } catch (error) {
-    console.log(error);
+    //console.log(error);
 
-    res.status(500).json({ error: error.message });
+    //res.status(500).json({ error: error.message });
   }
 });
 

@@ -38,6 +38,7 @@ export default function SearchPage() {
   const [shouldExpandQuery, setShouldExpandQuery] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [corrections, setCorrections] = useState([]);
+  const [selectedFacets, setSelectedFacets] = useState([]);
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -82,14 +83,17 @@ export default function SearchPage() {
     }
   };
 
+  const handleFacetClick = (facetName, facetValue) => {
+    setSelectedFacets([facetName, facetValue]);
+  };
+
   const searchWebsite = async (expandQuery) => {
     setSuggestions([]);
     setIsLoadingSearch(true);
     console.log("expandQuery", expandQuery);
-
     try {
       const response = await axios.get(
-        `http://localhost:3001/api/search?q=${query}&expand=${expandQuery}`
+        `http://localhost:3001/api/search?q=${query}&facet=${selectedFacets[0] ?? ""}:${selectedFacets[1] ?? ""}&expand=${expandQuery}`
       );
       setSearchResults(response.data);
       setFacets(response.data.facet_counts.facet_fields);
@@ -121,6 +125,13 @@ export default function SearchPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (selectedFacets.length !== 0) {
+      searchWebsite(shouldExpandQuery);
+      setSelectedFacets([]);
+    }
+  }, [selectedFacets]);
 
   useEffect(() => {
     if (query === lastSelectedQuery) {
@@ -275,6 +286,7 @@ export default function SearchPage() {
                             <div
                               key={index}
                               className="flex justify-between w-fit items-center gap-2"
+                              onClick={() => handleFacetClick(facetName, value)}
                             >
                               <span className="text-xs">{value}</span>
                               <Badge key={index}>
@@ -330,6 +342,8 @@ export default function SearchPage() {
                       </CardContent>
                       <CardScore>
                         <p className="text-sm"><strong>Relevancia: </strong>{doc.score}</p>
+                        <p className="text-sm"><strong>Autor: </strong>{doc.author}</p>
+                        <p className="text-sm"><strong>Tipo: </strong>{doc.doc_type}</p>
                       </CardScore>
                     </Card>
                   ))}
