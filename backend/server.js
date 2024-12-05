@@ -5,40 +5,42 @@ const cheerio = require("cheerio");
 const cors = require("cors");
 const { convert } = require("html-to-text");
 const { CohereClientV2 } = require("cohere-ai");
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const pdfParse = require('pdf-parse');
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+const pdfParse = require("pdf-parse");
 
 const cohere = new CohereClientV2({
   token: "4CDMDIZHFjWYY70VUhbXtptiJgYdf3WGwujNA2SS",
 });
 
-const uploadDir = path.join(__dirname, 'uploads');
+const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 const storage = multer.diskStorage({
   destination: uploadDir,
   filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}-${file.originalname}`;
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${
+      file.originalname
+    }`;
     cb(null, uniqueName);
-  }
+  },
 });
 
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
+    if (file.mimetype === "application/pdf") {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF files are allowed'));
+      cb(new Error("Only PDF files are allowed"));
     }
   },
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  }
-})
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+});
 
 const app = express();
 app.use(cors());
@@ -192,9 +194,14 @@ app.post("/api/crawl", async (req, res) => {
           "script, style, button, img, input, form, select, textarea, iframe"
         ).remove();
 
-        const content = convert($("body").text(), {
+        const content = convert($("body").html(), {
           wordwrap: false,
           preserveNewlines: false,
+          selectors: [
+            {
+              selector: "a", options: { ignoreHref: true },
+            },
+          ],
         });
 
         const doc = {
@@ -206,6 +213,7 @@ app.post("/api/crawl", async (req, res) => {
           timestamp: new Date().toISOString(),
           doc_type: "webpage",
         };
+
 
         console.log(`Indexing ${pageUrl}`);
 
@@ -224,7 +232,9 @@ app.post("/api/crawl", async (req, res) => {
         }
 
         if (depth === MAX_DEPTH) {
-          console.log(`Reached max depth of ${MAX_DEPTH} for ${pageUrl}, no need to extract links`);
+          console.log(
+            `Reached max depth of ${MAX_DEPTH} for ${pageUrl}, no need to extract links`
+          );
           return;
         }
 
@@ -259,8 +269,6 @@ app.get("/api/search", async (req, res) => {
   try {
     let { q, expand, facet } = req.query;
 
-
-
     const originalQuery = q;
 
     expand = expand === "true";
@@ -291,16 +299,11 @@ app.get("/api/search", async (req, res) => {
     newParams.append("facet.field", "doc_type");
     newParams.append("facet.field", "author_facet");
 
-
     const request = {
       params: newParams,
-    }
-
-    
+    };
 
     const response = await axios.get(`${SOLR_URL}/spell`, request);
-
-
 
     res.json({ originalQuery, finalQuery: q, ...response.data });
   } catch (error) {
@@ -324,50 +327,49 @@ app.get("/api/suggest", async (req, res) => {
   }
 });
 
-app.post('/api/upload/pdf', upload.single('pdf'), async (req, res) => {
+app.post("/api/upload/pdf", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No PDF file uploaded' });
+      return res.status(400).json({ error: "No PDF file uploaded" });
     }
 
     const filePath = req.file.path;
     const fileData = await fs.promises.readFile(filePath);
-    
+
     // Parse PDF content
     const pdfData = await pdfParse(fileData);
-    
+
     // Create document for Solr
     const doc = {
       id: Date.now().toString() + Math.random().toString(36).slice(2),
-      url: `${req.protocol}://${req.get('host')}/${req.file.filename}`,
-      title: req.file.originalname.replace('.pdf', ''),
+      url: `${req.protocol}://${req.get("host")}/${req.file.filename}`,
+      title: req.file.originalname.replace(".pdf", ""),
       content_suggest: pdfData.text,
-      author: pdfData.info?.Author || '',
+      author: pdfData.info?.Author || "",
       timestamp: new Date().toISOString(),
-      doc_type: 'pdf'
+      doc_type: "pdf",
     };
 
     // Index to Solr
     await axios.post(`${SOLR_URL}/update/json/docs`, doc, {
-      headers: { 'Content-Type': 'application/json' },
-      params: { commit: true }
+      headers: { "Content-Type": "application/json" },
+      params: { commit: true },
     });
 
     res.json({
       success: true,
-      message: 'PDF uploaded and indexed successfully',
-      document: doc
+      message: "PDF uploaded and indexed successfully",
+      document: doc,
     });
-
   } catch (error) {
-    console.error('PDF upload error:', error);
+    console.error("PDF upload error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 const PORT = 3001;
 
-app.use(express.static(path.join(__dirname, 'uploads')));
+app.use(express.static(path.join(__dirname, "uploads")));
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
