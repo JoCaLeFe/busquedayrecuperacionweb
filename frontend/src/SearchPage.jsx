@@ -7,7 +7,7 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  CardScore
+  CardInfo
 } from "@/components/ui/card";
 import {
   Select,
@@ -340,11 +340,11 @@ export default function SearchPage() {
                           }}
                         />
                       </CardContent>
-                      <CardScore>
+                      <CardInfo>
                         <p className="text-sm"><strong>Relevancia: </strong>{doc.score}</p>
-                        <p className="text-sm"><strong>Autor: </strong>{doc.author}</p>
+                        <p className="text-sm"><strong>Autor: </strong>{doc.author ? doc.author : 'N/A'}</p>
                         <p className="text-sm"><strong>Tipo: </strong>{doc.doc_type}</p>
-                      </CardScore>
+                      </CardInfo>
                     </Card>
                   ))}
                 </div>
