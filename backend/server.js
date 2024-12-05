@@ -223,6 +223,11 @@ app.post("/api/crawl", async (req, res) => {
           return;
         }
 
+        if (depth === MAX_DEPTH) {
+          console.log(`Reached max depth of ${MAX_DEPTH} for ${pageUrl}, no need to extract links`);
+          return;
+        }
+
         console.log(`Extracting links from ${pageUrl}`);
 
         const links = extractLinks($, pageUrl);
