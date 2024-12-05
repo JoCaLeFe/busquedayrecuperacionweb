@@ -199,7 +199,12 @@ app.post("/api/crawl", async (req, res) => {
           preserveNewlines: false,
           selectors: [
             {
-              selector: "a", options: { ignoreHref: true },
+              selector: "ul",
+              options: { itemPrefix: " " },
+            },
+            {
+              selector: "a",
+              options: { ignoreHref: true },
             },
           ],
         });
@@ -213,7 +218,6 @@ app.post("/api/crawl", async (req, res) => {
           timestamp: new Date().toISOString(),
           doc_type: "webpage",
         };
-
 
         console.log(`Indexing ${pageUrl}`);
 
